@@ -25,7 +25,7 @@ Read the memory file `cube-fork-reintegration-playbook` first — it holds pitfa
 
 7. **Commit on the integration branch** (conventional commit, `feat(cubesql):`), then update `BASE_TAG` at the top of `scripts/integrate-upstream-tag.sh` to the new tag so the next run diffs against this integration branch.
 
-8. **Docker image:** the fork branch has `.github/workflows/build-custom-image.yml` (manual `workflow_dispatch` with `upstream_tag` input) that rebases and builds `ghcr.io/<owner>/cube:<tag>-database-meta` from `packages/cubejs-docker/dev.Dockerfile`. It checks out `feat/sql-api-database-meta` hardcoded — if building from an integration branch, update that ref or push the integration branch and adjust.
+8. **Docker image:** push the integration branch, then run `.github/workflows/build-custom-image.yml` (manual `workflow_dispatch`) with `upstream_tag` and `branch` (the integration branch). It 3-way applies the branch's net patch onto the tag (never rebases the branch) and builds `ghcr.io/<owner>/cube:<tag>-database-meta` from `packages/cubejs-docker/dev.Dockerfile`.
 
 ## Guards
 

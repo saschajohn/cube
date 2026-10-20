@@ -1,0 +1,80 @@
+name: Build Custom Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Upstream tag to build from (e.g. v1.8.8)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch carrying the database-meta patch (integration branch or fork branch)'
+        required: true
+        default: 'integrate/v1.8.8-database-meta'
+        type: string
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/cube
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Apply database-meta patch onto upstream tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git remote add upstream https://github.com/cube-js/cube.git
+          git fetch upstream tag ${{ inputs.upstream_tag }} --no-tags
+
+          # 3-way apply the branch's net diff onto the tag. Do NOT rebase the
+          # branch itself: its history contains duplicate/rebased commits and
+          # no-op reorders; the net diff is the source of truth.
+          BASE=$(git merge-base HEAD ${{ inputs.upstream_tag }})
+          if [ -z "$BASE" ] || git merge-base --is-ancestor ${{ inputs.upstream_tag }} HEAD; then
+            # Branch is (based on) a superset of the tag: diff against the tag.
+            BASE=${{ inputs.upstream_tag }}
+          fi
+          git diff $BASE HEAD -- packages/cubejs-backend-native rust/cubesql > /tmp/database-meta.patch
+          if [ ! -s /tmp/database-meta.patch ]; then
+            echo "Empty patch — feature may already be in ${{ inputs.upstream_tag }} or wrong branch" >&2
+            exit 1
+          fi
+          git switch -c build/${{ inputs.upstream_tag }}-database-meta ${{ inputs.upstream_tag }}
+          git apply --3way /tmp/database-meta.patch
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./packages/cubejs-docker/dev.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ inputs.upstream_tag }}-database-meta
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ inputs.upstream_tag }}-database-meta
