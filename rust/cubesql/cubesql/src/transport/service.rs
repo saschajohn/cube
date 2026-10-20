@@ -56,6 +56,8 @@ pub struct LoadRequestMeta {
     // Not part of the request meta Cube sees, the transport sends it as its own field
     #[serde(skip)]
     external_pre_aggregations: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    database: Option<String>,
 }
 
 impl LoadRequestMeta {
@@ -67,6 +69,7 @@ impl LoadRequestMeta {
             app_name,
             change_user: None,
             external_pre_aggregations: false,
+            database: None,
         }
     }
 
@@ -84,6 +87,14 @@ impl LoadRequestMeta {
 
     pub fn set_external_pre_aggregations(&mut self, external_pre_aggregations: bool) {
         self.external_pre_aggregations = external_pre_aggregations;
+    }
+
+    pub fn database(&self) -> Option<String> {
+        self.database.clone()
+    }
+
+    pub fn set_database(&mut self, database: Option<String>) {
+        self.database = database;
     }
 }
 
